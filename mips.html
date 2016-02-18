@@ -1,0 +1,262 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <style>
+        #tooltip {
+        position: absolute;
+        width: 400px;
+        height: auto;
+        padding: 10px;
+        background-color: white;
+        -webkit-border-radius: 10px;
+        -moz-border-radius: 10px;
+        border-radius: 10px;
+        -webkit-box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+        -moz-box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+        box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+        pointer-events: none;
+}
+
+#tooltip.hidden {
+        display: none;
+}
+
+#tooltip p {
+        margin: 0;
+        font-family: sans-serif;
+        font-size: 16px;
+        line-height: 20px;
+}
+    </style>
+    <title></title>
+    <!-- Bootstrap -->
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <script src="js/jquery-1.12.0.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+    <script src="js/d3.min.js"></script>
+    <script src="js/runMips.js"></script>
+    <script src="js/genInputoutput.js"></script>
+    <script src="js/mindmup-editabletable.js"></script>
+    
+     <div style="width: 100%; display: table;">
+        <div class="row">
+            <div id="svg_image" class="col-sm-8">
+                <div id="tooltip" class="hidden">
+                     <p><strong><span id="name">100</span></strong></p>
+                     <p><span id="input"></span></p>
+                </div></div>
+            <div id="register_display" class="col-sm-4"></div>
+        </div>
+        <div class="row">
+            <div id="program_entry"  class="col-sm-4">
+            <textarea id="programText" cols="60" rows="5"></textarea>
+                
+                <input id="run" type="button"  value="RUN"  class="btn btn-primary" onclick="runProgram()"/>
+                <input id="step" type="button" value="STEP" class="btn btn-success" onclick="runStep()" />
+            </div>
+            <div id="program_display" class="col-sm-8">
+            </div>
+        </div>
+
+</div>
+    
+    
+   
+    
+    <script>
+
+        var colorStack = [0, 0, 0, 0, 0];
+        var AlU_store = {};
+        AlU_store["value"] = "000";
+        AlU_store["intent"] = "idle";
+        var InstructionMemory;
+        var state = zeroizeState();
+        // want custom initial program? populate text here //
+        $("#programText").html("<add><4><12><15>\n<sub><4><16><13>\n<lw><4><16><123>\n<sw><4><16><123>\n<beq><4><16><123>");
+        // want custom initial Registers? populate array here //
+        var registers = [];
+        for (i = 0; i < 16; i++) {
+            var nodes = {};
+            nodes["regName1"] = i * 2;
+            nodes["value1"] = i * 2;
+            nodes["regName2"] = i * 2 + 1;
+            nodes["value2"] = i * 2 + 1;
+            registers.push(nodes);
+        }
+
+        var table = d3.select('#register_display').append('table')
+        .attr("class", "table table-striped");
+        var headRow = table.append('thead').append('tr')
+        headRow.append('th').html("Register")
+        headRow.append('th').html("Value")
+        headRow.append('th').html("Register")
+        headRow.append('th').html("Value");
+
+        var tr = table.append('tbody').selectAll('tr')
+            .data(registers).enter()
+            .append('tr')
+        tr.append('td').html(function (d) { return d.regName1; });
+        tr.append('td').html(function (d) { return d.value1; });
+        tr.append('td').html(function (d) { return d.regName2; });
+        tr.append('td').html(function (d) { return d.value2; });
+
+        var height = "618.125"
+        width = "878.125"
+
+        var bufferArray = [];
+        var loaded_componant = [];
+
+        svg = d3.select("#svg_image").append("svg")
+        .attr("width", width)
+        .attr("height", height)
+
+
+        d3.json("data/background.json", function (error, rows) {
+            if (error) console.log(error);
+            svg.append("path")
+            .attr("d", rows[0].d);
+        });
+        
+        var color = d3.scale.category10();
+ 
+        d3.json("data/overlayPaths.json", function (error, rows) {
+            if (error) console.log(rows);
+            var group = svg.selectAll("g").data(rows).enter().append("g");
+            group.append("path").attr("d", function (data) { return data.d })
+            .attr("fill", "gray").attr("opacity", "0.5").on("mouseover", hoverOver)
+            .on("mouseout", function (d) {
+                d3.select(this).attr("opacity", "0.5");
+                d3.select("#tooltip").classed("hidden", true);
+            })
+        });
+
+        function hoverOver(d,i) {
+            d3.select(this).attr("opacity", "1");
+            //Get this bar's x/y values, then augment for the tooltip
+            var xPosition = parseFloat(d3.select(this).attr("x"));
+            var yPosition = parseFloat(d3.select(this).attr("y"));
+
+            //Update the tooltip position and value
+            var tool = d3.select("#tooltip")
+              .style("left", xPosition + "px")
+              .style("top", yPosition + "px");
+              tool.select("#name")
+              .text(d.name);
+              tool.select("#input")
+              .text(geninputoutput(d.name));
+
+            //Show the tooltip
+            d3.select("#tooltip").classed("hidden", false);
+
+        }
+
+        
+
+        function runProgram() {
+            if ($('#run').attr("value") == "RUN") {
+                var stringset = $('#programText').val().split("\n")
+                var InstrSet = parseInst($('#programText').val());
+                if (InstrSet.fail == false) {
+                    InstructionMemory = InstrSet.set;
+                    var svgDis = d3.select("#program_display").append("svg")
+                        .attr("width", width)
+                        .attr("height", height / 4);
+                    var group = svgDis.selectAll("g").data(InstrSet.set).enter().append("g");
+                    group.append("rect").attr("height", 20).attr("width", 250)
+                        .attr("y", function (d, i) { return i * 20; })
+                        .attr("fill", function (d, i) { return color(i+1); })
+                        .attr("opacity", "0.7");
+                    group.append("text").text(function (d, i) { return i * 4 + " :" + stringset[i]; })
+                           .attr("x", 10)
+                           .attr("y", function (d, i) { return i * 20 + 15; })
+                           .attr("fill", "black").style("font-weight", "bold");
+                    $('#run').attr("value", "RESET")
+                    runStep();
+                } else {
+                    alert(InstrSet.error);
+                }
+            } else {
+                reset();
+                //TODO reset code
+
+            }
+        }
+        function runStep() {
+            state = step(state);
+            colorStack[4] = colorStack[3];
+            colorStack[3] = colorStack[2];
+            colorStack[2] = colorStack[1];
+            colorStack[1] = colorStack[0];
+            colorStack[0] = (toDecimal(state[2])==='0') ?  0:state[1] / 4;
+            console.log(state);
+            
+            d3.select("#svg_image").selectAll("g path").attr("fill", function (d) {
+                if (d.group === "IF") return (colorStack[0]) ? color(colorStack[0]) : "gray";
+                if (d.group === "DE") return (colorStack[1]) ? color(colorStack[1]) : "gray";
+                if (d.group === "EX") return (colorStack[2]) ? color(colorStack[2]) : "gray";
+                if (d.group === "MEM") return (colorStack[3]) ? color(colorStack[3]) : "gray";
+                if (d.group === "WB") return (colorStack[4]) ? color(colorStack[4]) : "gray";
+            }).attr("opacity", function (d) {
+                if (d.name === "pc_mux_0") return (state[15] && state[13][0]) ? "0.2" : "1";
+                else if (d.name === "pc_mux_1") return (state[15] && state[13][0]) ? "1" : "0.2";
+                else if (d.name === "alu_mux_0") return (state[5][3]) ? "0.2" : "1";
+                else if (d.name === "alu_mux_1") return (state[5][3]) ? "1" : "0.2";
+                else if (d.name === "reg_dest_0") return (state[5][0]) ? "0.2" : "1";
+                else if (d.name === "reg_dest_1") return (state[5][0]) ? "1" : "0.2";
+                else if (d.name === "mem_mux_0") return (state[19][0]) ? "0.2" : "1";
+                else if (d.name === "mem_mux_1") return (state[19][0]) ? "1" : "0.2";
+                else return "0.5";
+            });
+                
+        }
+        function reset(){
+            $('#run').attr("value", "RUN");
+            state = zeroizeState();
+            d3.select("#svg_image").selectAll("g path").attr("fill", "gray");
+            d3.select("#program_display").select("svg").remove();
+            colorStack = [0, 0, 0, 0, 0];
+
+            AlU_store["value"] = "000";
+            AlU_store["intent"] = "idle";
+        }
+        $.fn.tableControl = function () {
+            'use strict';
+            var element = $(this),
+            dataRows = element.find('tbody tr');
+            element.find('td').on('change', function (evt) { return true;})
+                .on('validate', function (evt, value) {
+                    var cell = $(this),column = cell.index();
+                    console.log(cell);
+                if (column === 0|| column ===2) {
+                    return false;
+                } else {
+                    if (!isNaN(parseInt(value)) && isFinite(value)){
+                        var row = (cell[0].__data__["regName1"])/2;
+                        if(column === 1){
+                            registers[row]["value1"] = parseInt(value);
+                        }
+                        if(column === 3){
+                            registers[row]["value2"] = parseInt(value);
+                        } 
+                         console.log(registers);
+                        return true;
+                       
+                    } else{
+                        return false;
+                    }
+                }
+            });
+            return this;
+        }
+
+    </script>
+    <script>
+        $('#register_display').editableTableWidget().tableControl();
+        $('#register_display').editableTableWidget({ editor: $('<textarea>') });
+    </script>
+
+</body>
+
+</html>
