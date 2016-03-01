@@ -61,7 +61,7 @@ z-index: -1;
             <textarea id="programText" cols="60" rows="5"></textarea>
                 
                 <input id="run" type="button"  value="RUN"  class="btn btn-primary" onclick="runProgram()"/>
-                <input id="step" type="button" value="STEP" class="btn btn-success" onclick="runStep()" />
+                <input id="step" type="button" value="STEP" class="btn btn-success disabled"  onclick="runStep()" />
             </div>
             <div id="program_display" class="col-sm-8">
             </div>
@@ -182,7 +182,8 @@ z-index: -1;
                            .attr("x", 10)
                            .attr("y", function (d, i) { return i * 20 + 15; })
                            .attr("fill", "black").style("font-weight", "bold");
-                    $('#run').attr("value", "RESET")
+                    $('#run').attr("value", "RESET");
+                    $('#step').toggleClass('disabled', false);
                     runStep();
                 } else {
                     alert(InstrSet.error);
@@ -223,6 +224,7 @@ z-index: -1;
         }
         function reset(){
             $('#run').attr("value", "RUN");
+            $('#step').toggleClass('disabled', true);
             state = zeroizeState();
             d3.select("#svg_image").selectAll("g path").attr("fill", "gray");
             d3.select("#program_display").select("svg").remove();
