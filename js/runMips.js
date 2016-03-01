@@ -7,9 +7,9 @@
         |dec|dec     |32bit binary      |array[2]  |array[3]   |array[4]  |dec    |32bit    |32bit    |32bit      |5bit     |5bit     |
 
         EX/MEM                                                               MEM/WB
-*       |12        |13         |14        |15  |16        |17       |18      |19        |20         |21        |
-*       |WB_control|MEM_control|branchAddr|zero|ALU_result|read_Reg2|Reg_Dest|WB_control|Memory_read|ALU_result|
-*       |array[2]  |array[3]   |32bit     |bool|32bit     |32bit    |32bit   |array[2]  |32bit      |32bit     |
+*       |12        |13         |14        |15  |16        |17       |18      |19        |20         |21        |22       |23
+*       |WB_control|MEM_control|branchAddr|zero|ALU_result|read_Reg2|Reg_Dest|WB_control|Memory_read|ALU_result|Reg_Dest |exe_hold
+*       |array[2]  |array[3]   |32bit     |bool|32bit     |32bit    |32bit   |array[2]  |32bit      |32bit     |32bit      array[4]
 
 
 
@@ -22,7 +22,7 @@ var step = function (pastState) {
     var newState = [];
     
     if (pastState[15] && pastState[13][0])
-        newState[0] = pastState[14];
+        newState[0] = parseInt(toDecimal(pastState[14]),10);
     else {
         newState[0] = pastState[0] + 4;
     }
@@ -38,25 +38,31 @@ var step = function (pastState) {
 
     
     newState[6] = pastState[1];
-    var readReg = registerControl(pastState[2].slice(21, 26),pastState[2].slice(16, 21));
-    newState[7] = readReg[0];
-    newState[8] = readReg[1];
-    newState[9] = pastState[2].slice(0, 15).pad('0', 31).concat(pastState[2].slice(15, 16));
-    newState[10] = pastState[2].slice(16, 21);
-    newState[11] = pastState[2].slice(11, 16);
+    // address1, address2, regWrite, writeReg, writeData
+    var readReg = registerControl(flipStr(flipStr(pastState[2]).slice(21, 26)),flipStr(flipStr(pastState[2]).slice(16, 21)),pastState[19][0], pastState[22], (pastState[19][1] === 0) ? pastState[21] : pastState[20]);
+    newState[7] = toBinary(readReg[0]).pad('0',32);
+    newState[8] = toBinary(readReg[1]).pad('0', 32);
+    var inst0_15 = flipStr(flipStr(pastState[2]).slice(0, 15)).pad('0', 32)
+    newState[9] = flipStr(pastState[2]).slice(15, 16).concat(inst0_15)
+    newState[10] = flipStr(flipStr(pastState[2]).slice(16, 21));
+    newState[11] = flipStr(flipStr(pastState[2]).slice(11, 16));
 
     newState[12] = pastState[3];
     newState[13] = pastState[4];
-    newState[14] = toBinary(toDecimal(pastState[9]) * 4 + toDecimal(pastState[6]));
+    newState[14] = toBinary( parseInt(toDecimal(pastState[9])) * 4 + pastState[6]) .pad('0',32);
     var mux_alu = (pastState[5][3]) ? pastState[9] : pastState[8];
-    newState[16] = ALU_unit(pastState[9].slice(0, 6), pastState[5][2], pastState[5][1], pastState[7], mux_alu);
+    
+    newState[16] = ALU_unit(flipStr(flipStr(pastState[9]).slice(0, 6)), pastState[5][2], pastState[5][1], pastState[7], mux_alu);
     newState[15] = newState[16] === "00000000000000000000000000000000"
     
     newState[17] = pastState[8];
     newState[18] = (pastState[5][0])?pastState[11]:pastState[10]
     newState[19] = pastState[12];
-    newState[20] = MemoryUnit(pastState[13][1],pastState[13][2]);
+    newState[20] = MemoryUnit(pastState[13][1], pastState[13][2]);
     newState[21] = pastState[16];
+    newState[22] = pastState[18];
+
+    newState[23] = pastState[5];
 
     return newState;
 }
@@ -65,26 +71,27 @@ var controlUnit = function (instrbuffer) {
     // simulate control unit
     // here we cheat a little by using if instead of pure binary logic
     // return [EX,MEM,WB]
-    var controlReturn=[];
+    var controlReturn = [];
+    instrbuffer = flipStr(instrbuffer);
     controlReturn[0]=new Array(4);
     controlReturn[1]=new Array(3);
     controlReturn[2]=new Array(2);
     // r type
-    if ((instrbuffer.slice(0, 6) === "100010" || instrbuffer.slice(0, 6) === "100000") && instrbuffer.slice(26, 32) === "000000") {
+    if ((flipStr(instrbuffer.slice(0, 6)) === "100010" || flipStr(instrbuffer.slice(0, 6)) === "100000") && instrbuffer.slice(26, 32) === "000000") {
         controlReturn[0][0] = 1; controlReturn[0][1] = 1; controlReturn[0][2] = 0; controlReturn[0][3] = 0;
         controlReturn[1][0] = 0; controlReturn[1][1] = 0; controlReturn[1][2] = 0;
         controlReturn[2][0] = 1; controlReturn[2][1] = 0;
     }// i type
-    else if (instrbuffer.slice(26, 32) === "100011") {//lw
+    else if (flipStr(instrbuffer.slice(26, 32)) === "100011") {//lw
         controlReturn[0][0] = 0; controlReturn[0][1] = 0; controlReturn[0][2] = 0; controlReturn[0][3] = 1;
         controlReturn[1][0] = 0; controlReturn[1][1] = 1; controlReturn[1][2] = 0;
         controlReturn[2][0] = 1; controlReturn[2][1] = 1;
-    } else if (instrbuffer.slice(26, 32) === "101011") {//sw
+    } else if (flipStr(instrbuffer.slice(26, 32)) === "101011") {//sw
         controlReturn[0][0] = 0; controlReturn[0][1] = 0; controlReturn[0][2] = 0; controlReturn[0][3] = 1;
         controlReturn[1][0] = 0; controlReturn[1][1] = 0; controlReturn[1][2] = 1;
         controlReturn[2][0] = 0; controlReturn[2][1] = 0;
     }
-    else if (instrbuffer.slice(26, 32) === "000010") {//beq
+    else if (flipStr(instrbuffer.slice(26, 32)) === "000100") {//beq
         controlReturn[0][0] = 0; controlReturn[0][1] = 0; controlReturn[0][2] = 1; controlReturn[0][3] = 0;
         controlReturn[1][0] = 1; controlReturn[1][1] = 0; controlReturn[1][2] = 0;
         controlReturn[2][0] = 0; controlReturn[2][1] = 0;
@@ -117,7 +124,17 @@ var registerControl = function (address1, address2, regWrite, writeReg, writeDat
     } else {
         regbuffer.push(registers[parseInt(toDecimal(address2) / 2)].value1);
     }
-   // $("#register_display"). update reg dis
+    if (regWrite) {
+        console.log(toDecimal(writeData), toDecimal(writeReg));
+        if (toDecimal(writeReg) % 2) {
+            registers[toDecimal(writeReg) / 2].value2 = toDecimal(writeData);
+        } else {
+            registers[toDecimal(writeReg) / 2].value1 = toDecimal(writeData);
+        }
+        var temp=$("#register_display tbody tr td")[parseInt(toDecimal(writeReg))*2 + 1];
+        $("#register_display").find(temp).html(toDecimal(writeData));
+    }
+   
     return regbuffer;
 
 }
@@ -128,33 +145,31 @@ var ALU_unit = function (funct,ALUop0, ALUop1, read1, mux_alu) {
     if (ALUop0===0 && ALUop1===0) {
         AlU_store.value = "010";
         AlU_store.intent = "Add for LW or SW";
-        alu_result = (toDecimal(mux_alu) + toDecimal(read1));
+        alu_result = parseInt(toDecimal(mux_alu)) + parseInt(toDecimal(read1));
 
     } else {
         if (ALUop0===1) {
             AlU_store.value = "110";
             AlU_store.intent = "Subtract for Branch";
-            alu_result = (toDecimal(read1) - toDecimal(mux_alu));
+            alu_result = parseInt(toDecimal(read1)) - parseInt(toDecimal(mux_alu));
         } else if (ALUop1===1) {
             if (funct === "100000") {
-                console.log(ALUop0, ALUop1);
                 AlU_store.value = "010";
                 AlU_store.intent = "Add for Add instruction";
-                alu_result = (toDecimal(mux_alu) + toDecimal(read1));
+                alu_result = parseInt(toDecimal(mux_alu)) + parseInt(toDecimal(read1));
             }
             else if (funct === "100010") {
                 AlU_store.value = "010";
                 AlU_store.intent = "Subtract for Sub instruction";
-                alu_result = (toDecimal(read1) - toDecimal(mux_alu));
+                alu_result = parseInt(toDecimal(read1)) - parseInt(toDecimal(mux_alu));
             }
         }
     }
-    
-    return toBinary(alu_result);
+    return toBinary(alu_result).pad('0',32);
 }
 
-//   |dec|dec     |32bit binary      |array[2]  |array[3]   |array[4]  |dec    |32bit    |32bit    |32bit      |5bit     |5bit     |
-//|array[2]  |array[3]   |32bit     |bool|32bit     |32bit    |32bit   |array[2]  |32bit      |32bit     |
+//   |dec|dec     |32bit binary      |array[2]  |array[3]   |array[4]  |dec    |32bit    |32bit    |32bit      |5bit     |5bit     
+//   |array[2]  |array[3]   |32bit     |bool|32bit     |32bit    |32bit   |array[2]  |32bit      |32bit     |32bit     |
 
 var zeroizeState = function (){
     var emptystate=[];
@@ -179,6 +194,8 @@ var zeroizeState = function (){
     emptystate[19] = [0, 0];
     emptystate[20] = "00000000000000000000000000000000";
     emptystate[21] = "00000000000000000000000000000000";
+    emptystate[22] = "00000000000000000000000000000000";
+    emptystate[23] = [0, 0 , 0 , 0];
     return emptystate;
 }
 
@@ -187,30 +204,34 @@ function readInstMem(PC) {
     var strarray = (InstructionMemory[PC / 4]);
     if(strarray){
     if(strarray[0].match(/^add$/)){
-        instructionString = (toBinary(32).pad('0', 6)).concat("00000")
-            .concat(toBinary(strarray[1]).pad('0', 5))
-            .concat(toBinary(strarray[3]).pad('0', 5))
-            .concat(toBinary(strarray[2]).pad('0', 5)).concat("000000");
-    } else if(strarray[0].match(/^sub$/)){
-        instructionString = toBinary(34).pad('0', 6).concat("00000")
-            .concat(toBinary(strarray[1]).pad('0', 5))
-            .concat(toBinary(strarray[3]).pad('0', 5))
-            .concat(toBinary(strarray[2]).pad('0', 5)).concat("000000");
-    } else if (strarray[0].match(/^lw$/)) {
-        instructionString = toBinary(strarray[3]).pad('0', 16)
-            .concat(toBinary(strarray[1]).pad('0', 5))
+        instructionString = ("000000")
             .concat(toBinary(strarray[2]).pad('0', 5))
-            .concat(toBinary(35).pad('0', 6));
+            .concat(toBinary(strarray[3]).pad('0', 5))
+            .concat(toBinary(strarray[1]).pad('0', 5))
+            .concat("00000")
+            .concat(toBinary(32).pad('0', 6));
+    } else if(strarray[0].match(/^sub$/)){
+        instructionString = ("000000")
+            .concat(toBinary(strarray[2]).pad('0', 5))
+            .concat(toBinary(strarray[3]).pad('0', 5))
+            .concat(toBinary(strarray[1]).pad('0', 5))
+            .concat("00000")
+            .concat(toBinary(34).pad('0', 6));
+    } else if (strarray[0].match(/^lw$/)) {
+        instructionString = (toBinary(35).pad('0', 6))
+            .concat(toBinary(strarray[2]).pad('0', 5))
+            .concat(toBinary(strarray[1]).pad('0', 5))
+            .concat(toBinary(strarray[3]).pad('0', 16));
     } else if (strarray[0].match(/^sw$/)) {
-        instructionString = toBinary(strarray[3]).pad('0', 16)
-                .concat(toBinary(strarray[1]).pad('0', 5))
+        instructionString = toBinary(43).pad('0', 6)
                 .concat(toBinary(strarray[2]).pad('0', 5))
-                .concat(toBinary(43).pad('0', 6));
+                .concat(toBinary(strarray[1]).pad('0', 5))
+                .concat(toBinary(strarray[3]).pad('0', 16));
     } else if (strarray[0].match(/^beq$/)) {
-        instructionString = toBinary(strarray[3]).pad('0', 16)
+        instructionString = toBinary(4).pad('0', 6)
                 .concat(toBinary(strarray[2]).pad('0', 5))
                 .concat(toBinary(strarray[1]).pad('0', 5))
-                .concat(toBinary(4).pad('0', 6));
+                .concat(toBinary(strarray[3]).pad('0', 16));
     } else {
         return alert("Invaild Addressing Check Branch Does not Go Out of Bounds");
     }
@@ -225,16 +246,17 @@ String.prototype.pad = function (_char, len, to) {
         return this;
     }
     to = to || 0;
-
     var ret = this;
-
     var max = (len - this.length) / _char.length + 1;
     while (--max) {
         ret = (to) ? ret + _char : _char + ret;
     }
-
     return ret;
 };
+
+function flipStr(str) {
+    return str.split("").reverse().join("")
+}
 
 var toBinary = function (decNum) {
     return parseInt(decNum, 10).toString(2);
