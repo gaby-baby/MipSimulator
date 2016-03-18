@@ -33,6 +33,9 @@
     left:14px;
 z-index: -1;
 }
+#register_display td.reg {
+  text-align: right;
+}
     </style>
     <title></title>
     <!-- Bootstrap -->
@@ -95,17 +98,17 @@ z-index: -1;
         var table = d3.select('#register_display').append('table')
         .attr("class", "table table-striped");
         var headRow = table.append('thead').append('tr')
-        headRow.append('th').html("Register")
-        headRow.append('th').html("Value")
-        headRow.append('th').html("Register")
+        headRow.append('th').html("Even Register");
+        headRow.append('th').html("Value");
+        headRow.append('th').html("Odd Register");
         headRow.append('th').html("Value");
 
         var tr = table.append('tbody').selectAll('tr')
             .data(registers).enter()
             .append('tr')
-        tr.append('td').html(function (d) { return d.regName1; });
+        tr.append('td').html(function (d) { return d.regName1; }).attr("class", "reg");
         tr.append('td').html(function (d) { return d.value1; });
-        tr.append('td').html(function (d) { return d.regName2; });
+        tr.append('td').html(function (d) { return d.regName2; }).attr("class", "reg");
         tr.append('td').html(function (d) { return d.value2; });
 
         var height = "619"
@@ -189,8 +192,15 @@ z-index: -1;
                     alert(InstrSet.error);
                 }
             } else {
-                reset();
-                //TODO reset code
+                $('#run').attr("value", "New Program");
+                $('#step').toggleClass('disabled', true);
+                state = zeroizeState();
+                d3.select("#svg_image").selectAll("g path").attr("fill", "gray");
+                d3.select("#program_display").select("svg").remove();
+                colorStack = [0, 0, 0, 0, 0];
+
+                AlU_store["value"] = "000";
+                AlU_store["intent"] = "idle";
 
             }
         }
@@ -222,17 +232,7 @@ z-index: -1;
             });
                 
         }
-        function reset(){
-            $('#run').attr("value", "RUN");
-            $('#step').toggleClass('disabled', true);
-            state = zeroizeState();
-            d3.select("#svg_image").selectAll("g path").attr("fill", "gray");
-            d3.select("#program_display").select("svg").remove();
-            colorStack = [0, 0, 0, 0, 0];
-
-            AlU_store["value"] = "000";
-            AlU_store["intent"] = "idle";
-        }
+        
         $.fn.tableControl = function () {
             'use strict';
             var element = $(this),
